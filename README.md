@@ -1,17 +1,23 @@
-# Age Calculator
+<h1 align="center">Age Calculator</h1>
 
-**Calculates an exact age in years, months and days, with input masking and a persisted light / dark theme.**
+<p align="center"><b>Calculates an exact age in years, months and days, with input masking and a persisted light / dark theme.</b></p>
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-mister2314.github.io/CodeAlpha__Age__Calculator-2ea44f?style=flat-square&logo=vercel&logoColor=white)](https://mister2314.github.io/CodeAlpha_Age_Calculator/)
+<p align="center">
+[![Live Demo](https://img.shields.io/badge/Live_Demo-▶-2ea44f?style=for-the-badge&logo=vercel&logoColor=white)](https://mister2314.github.io/CodeAlpha_Age_Calculator/)
 ![HTML5](https://img.shields.io/badge/HTML5-e34f26?style=flat-square&logoColor=white)
 ![CSS3](https://img.shields.io/badge/CSS3-1572b6?style=flat-square&logoColor=white)
 ![Vanilla JS](https://img.shields.io/badge/Vanilla_JS-f7df1e?style=flat-square&logoColor=white)
+</p>
+
+<p align="center">[**Live demo**](https://mister2314.github.io/CodeAlpha_Age_Calculator/) · [Quick start](#quick-start) · [Features](#features) · [Architecture](#architecture) · [FAQ](#faq)</p>
 
 <p align="center">
   <a href="https://mister2314.github.io/CodeAlpha_Age_Calculator/">
-    <img src="docs/preview.png" alt="Age Calculator — desktop preview" width="100%">
+    <img src="docs/demo.gif" alt="Age Calculator — animated demo" width="88%">
   </a>
 </p>
+
+<p align="center"><sub>Live capture of the real build — 52 KB, loops forever.</sub></p>
 
 ## Overview
 
@@ -20,6 +26,15 @@ Enter a date of birth as three separate day / month / year fields and get back a
 The three-field layout is deliberate: a single date input hands the browser's own picker the job, whereas separate fields let me mask and validate the input as it is typed. Non-digits are stripped on the fly and out-of-range values are clamped, so an impossible date cannot be submitted.
 
 Built as a front-end task during the CodeAlpha internship programme.
+
+## At a glance
+
+| Field | Detail |
+| --- | --- |
+| **Type** | Static site — no build step |
+| **Primary language** | JavaScript |
+| **Live demo** | [mister2314.github.io/CodeAlpha_Age_Calculator](https://mister2314.github.io/CodeAlpha_Age_Calculator/) |
+| **Repository** | [Mister2314/CodeAlpha_Age_Calculator](https://github.com/Mister2314/CodeAlpha_Age_Calculator) |
 
 ## Features
 
@@ -39,25 +54,34 @@ Built as a front-end task during the CodeAlpha internship programme.
 | Logic | Vanilla JavaScript (`DOMContentLoaded`, `localStorage`) |
 | Deploy | GitHub Pages |
 
+## Architecture
+
+```mermaid
+flowchart LR
+  A["DD / MM / YYYY<br/>three fields"] --> B["Input masking<br/>strip non-digits"]
+  B --> C["Range clamp<br/>day 1–31 · month 1–12"]
+  C --> D["Date difference"]
+  D --> E["Years · months · days"]
+  D --> F["Totals in months · weeks · days"]
+```
+
 ## Screenshots
 
 | Desktop | Mobile |
 | :---: | :---: |
 | <img src="docs/preview.png" alt="Desktop view"> | <img src="docs/preview-mobile.png" alt="Mobile view" width="230"> |
 
-## Getting Started
-
-No build step and no dependencies — clone the repo and open the entry file, or serve the folder locally:
+## Quick Start
 
 ```bash
 git clone https://github.com/Mister2314/CodeAlpha_Age_Calculator.git
 cd CodeAlpha_Age_Calculator
 
-# Option 1 — open it directly
+# open it directly
 start index.html      # Windows
 open  index.html      # macOS
 
-# Option 2 — serve it locally
+# or serve the folder
 npx serve .
 ```
 
@@ -68,6 +92,28 @@ index.html — date fields, theme toggle and result panel
 assets/js/index.js — input masking, validation, date maths, theme persistence
 assets/css/style.css — layout and both palettes
 ```
+
+## FAQ
+
+<details>
+<summary><b>Why three separate fields instead of one date input?</b></summary>
+
+A single date input hands control to the browser's own picker. Separate fields let the input be masked and clamped as it is typed, so an impossible date cannot be submitted.
+
+</details>
+
+<details>
+<summary><b>Is the theme remembered?</b></summary>
+
+Yes — the choice is written to `localStorage` and restored on load.
+
+</details>
+
+## Roadmap
+
+- [ ] Add a leap-year edge-case test
+- [ ] Add a countdown to the next birthday
+- [ ] Support the Azerbaijani date format
 
 ## Notes
 
