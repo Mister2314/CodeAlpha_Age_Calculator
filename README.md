@@ -1,8 +1,8 @@
-﻿# Age Calculator
+# Age Calculator
 
 Calculates an exact age in years, months and days from a day / month / year input.
 
-**Live demo:** https://mister2314.github.io/CodeAlpha_Age_Calculator/
+**Live demo:** https://codealpha-age-calculator-rho.vercel.app
 
 <div align="center">
 
@@ -18,7 +18,7 @@ Three separate date fields instead of one native date picker, so the input can b
 
 ## Tech stack
 
-HTML · CSS · Vanilla JS
+React 19 · TypeScript · Vite
 
 ## Features
 
