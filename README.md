@@ -1,10 +1,16 @@
-# Age Calculator
+﻿# Age Calculator
 
 Calculates an exact age in years, months and days from a day / month / year input.
 
 **Live demo:** https://mister2314.github.io/CodeAlpha_Age_Calculator/
 
-<img src="docs/preview.png" alt="Age Calculator screenshot" width="380">
+<div align="center">
+
+| Desktop | Mobile |
+|---|---|
+| <img src="docs/shot-desktop.png" alt="Desktop view" width="700"> | <img src="docs/shot-mobile.png" alt="Mobile view" width="290"> |
+
+</div>
 
 ## What it does
 
