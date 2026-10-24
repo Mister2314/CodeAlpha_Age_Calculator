@@ -39,15 +39,26 @@ React 19 · TypeScript · Vite
 - Dark / light theme toggle with inline SVG icons, persisted to `localStorage`
 - Responsive layout set in Noto Sans
 
+## The revamp
+
+The 2026 pass keeps the tool's identity and spends its motion budget in one place — the result:
+
+- **Kinetic result reveal** — the three numerals count up in a staggered sequence with `tabular-nums`, so digits never jitter while they animate
+- **Cause-linked error choreography** — the offending field shakes and its message slides in under it; every message is announced through `aria-live`
+- **Theme toggle micro-interaction** — icon crossfade, with a View Transitions API cross-fade between palettes where the browser supports it (progressive enhancement)
+- **Birthday moment** — calculate your age on your birthday and the result says so
+- **Mobile-first inputs** — `inputMode="numeric"` brings up the digit keypad, `autocomplete="bday-*"` fills from contacts, 16px inputs prevent iOS zoom
+- **Reduced motion designed in** — with `prefers-reduced-motion`, counts land instantly and all transitions collapse; the static page is the complete page
+
 ## Run locally
 
 ```bash
 git clone https://github.com/Mister2314/CodeAlpha_Age_Calculator.git
 cd CodeAlpha_Age_Calculator
-npx serve .
-# or just open index.html
+npm install
+npm run dev
 ```
 
 ## What I learned
 
-Masking each field separately forces the validation logic to live in `input` events rather than a single submit check — errors surface while typing instead of after.
+Masking each field separately forces the validation logic to live in `input` events rather than a single submit check — errors surface while typing instead of after. The revamp added the flip side: a hand-rolled `requestAnimationFrame` counter is ~30 lines, and not adding an animation library was the design decision that mattered.

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./styles.css";
 
 const MONTHS = [
@@ -20,6 +20,43 @@ interface AgeResult {
   days: number;
 }
 
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/** Counts a displayed number from 0 to `target` with an expo-out curve.
+ *  Jumps straight to the target when reduced motion is preferred. */
+function useCountUp(target: number, delay: number, runId: number): number {
+  const [value, setValue] = useState(() => (prefersReducedMotion() ? target : 0));
+  const raf = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (prefersReducedMotion()) {
+      setValue(target);
+      return;
+    }
+    const DURATION = 900;
+    let start: number | null = null;
+    let timeout = 0;
+    const tick = (now: number) => {
+      if (start === null) start = now;
+      const t = Math.min((now - start) / DURATION, 1);
+      const eased = 1 - Math.pow(2, -10 * t); // expo.out
+      setValue(Math.round(eased * target));
+      if (t < 1) raf.current = requestAnimationFrame(tick);
+    };
+    timeout = window.setTimeout(() => {
+      raf.current = requestAnimationFrame(tick);
+    }, delay);
+    return () => {
+      window.clearTimeout(timeout);
+      if (raf.current !== null) cancelAnimationFrame(raf.current);
+    };
+  }, [target, delay, runId]);
+
+  return value;
+}
+
 export default function App() {
   const [theme, setTheme] = useState<string>(() => localStorage.getItem("theme") || "light");
   const [day, setDay] = useState("");
@@ -29,16 +66,27 @@ export default function App() {
   const [monthError, setMonthError] = useState("");
   const [yearError, setYearError] = useState("");
   const [result, setResult] = useState<AgeResult | null>(null);
+  const [runId, setRunId] = useState(0);
+  const [shakeKey, setShakeKey] = useState(0);
 
   // The original stylesheet styles body.theme-* — apply the class to <body>.
   useEffect(() => {
     document.body.className = theme === "dark" ? "dark-mode" : "light-mode";
   }, [theme]);
 
-  const toggleTheme = () => {
-    const next = theme === "dark" ? "light" : "dark";
+  const applyTheme = (next: string) => {
     setTheme(next);
     localStorage.setItem("theme", next);
+  };
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => void };
+    if (typeof doc.startViewTransition === "function" && !prefersReducedMotion()) {
+      doc.startViewTransition(() => applyTheme(next));
+    } else {
+      applyTheme(next);
+    }
   };
 
   const handleDay = (value: string) => {
@@ -118,6 +166,7 @@ export default function App() {
     }
 
     if (hasError) {
+      setShakeKey((k) => k + 1);
       return;
     }
 
@@ -151,20 +200,40 @@ export default function App() {
     }
 
     setResult({ years, months, days });
+    setRunId((k) => k + 1);
   };
 
-  const onEnter = (e: React.KeyboardEvent) => {
+  const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") calculateAge();
   };
 
-  const y1 = result?.years ?? 0;
-  const m1 = result?.months ?? 0;
-  const d1 = result?.days ?? 0;
+  const years = result?.years ?? 0;
+  const months = result?.months ?? 0;
+  const days = result?.days ?? 0;
+
+  const shownYears = useCountUp(years, 0, runId);
+  const shownMonths = useCountUp(months, 120, runId);
+  const shownDays = useCountUp(days, 240, runId);
+
+  const now = new Date();
+  const isBirthday =
+    result !== null &&
+    parseInt(month) === now.getMonth() + 1 &&
+    parseInt(day) === now.getDate();
+
+  const asOf = result
+    ? `as of ${MONTHS[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`
+    : "";
 
   return (
     <>
       <div className="theme-toggle">
-        <button id="themeToggle" onClick={toggleTheme}>
+        <button
+          id="themeToggle"
+          onClick={toggleTheme}
+          className={`theme-toggle-btn${theme === "dark" ? " is-dark" : ""}`}
+          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+        >
           <svg className="sun-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="5" />
             <line x1="12" y1="1" x2="12" y2="3" />
@@ -182,13 +251,13 @@ export default function App() {
         </button>
       </div>
       <div className="container">
-        <div className="formContainer">
+        <main className="formContainer">
           <div className="up">
             <h1>Age Calculator</h1>
           </div>
           <div className="middle">
-            <div className="inputcontainer">
-              <p className="title">Day</p>
+            <div className="inputcontainer" key={`d-${shakeKey}`} data-error={dayError ? "true" : undefined}>
+              <label className="title" htmlFor="date">Day</label>
               <input
                 type="text"
                 name="date"
@@ -197,15 +266,19 @@ export default function App() {
                 required
                 minLength={1}
                 maxLength={2}
+                inputMode="numeric"
+                autoComplete="bday-day"
+                aria-invalid={dayError ? true : undefined}
+                aria-describedby={dayError ? "date-error" : undefined}
                 value={day}
                 onChange={(e) => handleDay(e.target.value)}
-                onKeyPress={onEnter}
+                onKeyDown={onKeyDown}
               />
-              <span className="error">{dayError}</span>
+              <span className="error" id="date-error" aria-live="polite">{dayError}</span>
             </div>
 
-            <div className="inputcontainer">
-              <p className="title">Month</p>
+            <div className="inputcontainer" key={`m-${shakeKey}`} data-error={monthError ? "true" : undefined}>
+              <label className="title" htmlFor="month">Month</label>
               <input
                 type="text"
                 name="month"
@@ -214,15 +287,19 @@ export default function App() {
                 required
                 minLength={1}
                 maxLength={2}
+                inputMode="numeric"
+                autoComplete="bday-month"
+                aria-invalid={monthError ? true : undefined}
+                aria-describedby={monthError ? "month-error" : undefined}
                 value={month}
                 onChange={(e) => handleMonth(e.target.value)}
-                onKeyPress={onEnter}
+                onKeyDown={onKeyDown}
               />
-              <span className="error">{monthError}</span>
+              <span className="error" id="month-error" aria-live="polite">{monthError}</span>
             </div>
 
-            <div className="inputcontainer">
-              <p className="title">Year</p>
+            <div className="inputcontainer" key={`y-${shakeKey}`} data-error={yearError ? "true" : undefined}>
+              <label className="title" htmlFor="year">Year</label>
               <input
                 type="text"
                 name="year"
@@ -231,11 +308,15 @@ export default function App() {
                 required
                 minLength={4}
                 maxLength={4}
+                inputMode="numeric"
+                autoComplete="bday-year"
+                aria-invalid={yearError ? true : undefined}
+                aria-describedby={yearError ? "year-error" : undefined}
                 value={year}
                 onChange={(e) => handleYear(e.target.value)}
-                onKeyPress={onEnter}
+                onKeyDown={onKeyDown}
               />
-              <span className="error">{yearError}</span>
+              <span className="error" id="year-error" aria-live="polite">{yearError}</span>
             </div>
           </div>
 
@@ -247,19 +328,32 @@ export default function App() {
             </div>
           </div>
 
-          <div className={`result${result ? " active" : ""}`} id="result">
+          <div className={`result${result ? " active" : ""}`} id="result" aria-live="polite">
             <div id="ageResult">
               {result && (
-                <>
-                  <div>You are</div>
-                  <div className="large-text">
-                    {y1} {y1 === 1 ? "year" : "years"}, {m1} {m1 === 1 ? "month" : "months"}, and {d1} {d1 === 1 ? "day" : "days"} old
+                <div key={runId}>
+                  <p className="result-heading">You are</p>
+                  <div className="result-grid">
+                    <div className="result-cell">
+                      <span className="result-number">{shownYears}</span>
+                      <span className="result-unit">years</span>
+                    </div>
+                    <div className="result-cell">
+                      <span className="result-number">{shownMonths}</span>
+                      <span className="result-unit">months</span>
+                    </div>
+                    <div className="result-cell">
+                      <span className="result-number">{shownDays}</span>
+                      <span className="result-unit">days</span>
+                    </div>
                   </div>
-                </>
+                  <p className="result-caption">old{isBirthday ? " — and it's your birthday today 🎂" : ""}</p>
+                  <p className="result-asof">{asOf}</p>
+                </div>
               )}
             </div>
           </div>
-        </div>
+        </main>
       </div>
     </>
   );
