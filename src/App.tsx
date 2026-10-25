@@ -1,27 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import "./styles.css";
+import { ageAt, diffYMD, isLeapDay, isValidDate, nextBirthday, startOfDay } from "./age";
+import { fill, getDict, type Lang } from "./i18n";
 
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
+const WEEKDAYS: Record<Lang, string[]> = {
+  en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+  az: ["Bazar", "Bazar ertəsi", "Çərşənbə axşamı", "Çərşənbə", "Cümə axşamı", "Cümə", "Şənbə"],
+};
 
-function isLeapYear(year: number): boolean {
-  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
-}
-
-function getMonthName(monthNum: number): string {
-  return MONTHS[monthNum - 1];
-}
-
-interface AgeResult {
-  years: number;
-  months: number;
-  days: number;
-}
+const MONTHS: Record<Lang, string[]> = {
+  en: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+  az: ["Yanvar", "Fevral", "Mart", "Aprel", "May", "İyun", "İyul", "Avqust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"],
+};
 
 function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function detectLang(): Lang {
+  const saved = localStorage.getItem("lang");
+  if (saved === "az" || saved === "en") return saved;
+  return navigator.language?.toLowerCase().startsWith("az") ? "az" : "en";
 }
 
 /** Counts a displayed number from 0 to `target` with an expo-out curve.
@@ -57,22 +56,58 @@ function useCountUp(target: number, delay: number, runId: number): number {
   return value;
 }
 
+type Mode = "age" | "diff";
+
+interface Fields {
+  d: string;
+  m: string;
+  y: string;
+}
+type FieldKey = "d" | "m" | "y";
+
+const EMPTY: Fields = { d: "", m: "", y: "" };
+
+interface Computed {
+  years: number;
+  months: number;
+  days: number;
+  totalDays: number;
+  totalHours: number;
+  isBirthday: boolean;
+  leapDay: boolean;
+  birthWeekday: string | null;
+  nextBdDays: number | null;
+  nextBdDate: Date | null;
+}
+
 export default function App() {
-  const [theme, setTheme] = useState<string>(() => localStorage.getItem("theme") || "light");
-  const [day, setDay] = useState("");
-  const [month, setMonth] = useState("");
-  const [year, setYear] = useState("");
-  const [dayError, setDayError] = useState("");
-  const [monthError, setMonthError] = useState("");
-  const [yearError, setYearError] = useState("");
-  const [result, setResult] = useState<AgeResult | null>(null);
+  const [theme, setTheme] = useState<string>(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved === "dark" || saved === "light") return saved;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+  const [lang, setLang] = useState<Lang>(detectLang);
+  const [mode, setMode] = useState<Mode>("age");
+  const [birth, setBirth] = useState<Fields>(EMPTY);
+  const [from, setFrom] = useState<Fields>(EMPTY);
+  const [to, setTo] = useState<Fields>(EMPTY);
+  const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
+  const [result, setResult] = useState<Computed | null>(null);
+  const [diffLabel, setDiffLabel] = useState<{ from: Date; to: Date } | null>(null);
   const [runId, setRunId] = useState(0);
   const [shakeKey, setShakeKey] = useState(0);
+  const [copied, setCopied] = useState(false);
 
-  // The original stylesheet styles body.theme-* — apply the class to <body>.
+  const t = getDict(lang);
+
   useEffect(() => {
-    document.body.className = theme === "dark" ? "dark-mode" : "light-mode";
+    document.documentElement.className = theme === "dark" ? "dark-mode" : "light-mode";
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    document.title = t.docTitle;
+  }, [lang, t.docTitle]);
 
   const applyTheme = (next: string) => {
     setTheme(next);
@@ -89,123 +124,164 @@ export default function App() {
     }
   };
 
-  const handleDay = (value: string) => {
-    let v = value.replace(/[^0-9]/g, "");
-    const parsed = parseInt(v);
-    if (parsed > 31) v = "31";
-    setDay(v);
+  const switchLang = (next: Lang) => {
+    setLang(next);
+    localStorage.setItem("lang", next);
   };
 
-  const handleMonth = (value: string) => {
+  const clampField = (key: FieldKey, value: string, max: number): string => {
     let v = value.replace(/[^0-9]/g, "");
     const parsed = parseInt(v);
-    if (parsed > 12) v = "12";
-    setMonth(v);
+    if (key === "y") {
+      const currentYear = new Date().getFullYear();
+      if (parsed > currentYear) v = currentYear.toString();
+      if (v.length > 4) v = v.slice(0, 4);
+    } else {
+      if (parsed > max) v = String(max);
+      if (v.length > 2) v = v.slice(0, 2);
+    }
+    return v;
   };
 
-  const handleYear = (value: string) => {
-    let v = value.replace(/[^0-9]/g, "");
-    const currentYear = new Date().getFullYear();
-    const parsed = parseInt(v);
-    if (parsed > currentYear) v = currentYear.toString();
-    setYear(v);
-  };
+  /** Validate one date trio; returns the parsed Date or pushes errors. */
+  const validateTrio = (f: Fields, prefix: string, allowFuture: boolean): Date | null => {
+    const d = parseInt(f.d);
+    const m = parseInt(f.m);
+    const y = parseInt(f.y);
+    const errs: Partial<Record<string, string>> = {};
+    let ok = true;
 
-  const calculateAge = () => {
-    setDayError("");
-    setMonthError("");
-    setYearError("");
+    if (!f.d) { errs[`${prefix}d`] = t.errDayRequired; ok = false; }
+    else if (d < 1 || d > 31) { errs[`${prefix}d`] = t.errDayInvalid; ok = false; }
 
-    const d = parseInt(day);
-    const m = parseInt(month);
-    const y = parseInt(year);
+    if (!f.m) { errs[`${prefix}m`] = t.errMonthRequired; ok = false; }
+    else if (m < 1 || m > 12) { errs[`${prefix}m`] = t.errMonthInvalid; ok = false; }
 
-    let hasError = false;
+    if (!f.y) { errs[`${prefix}y`] = t.errYearRequired; ok = false; }
+    else if (f.y.length < 4) { errs[`${prefix}y`] = t.errYearLength; ok = false; }
 
-    if (!day) {
-      setDayError("Day is required");
-      hasError = true;
-    } else if (d < 1 || d > 31) {
-      setDayError("Must be a valid day");
-      hasError = true;
+    if (ok && !isValidDate(y, m, d)) {
+      errs[`${prefix}d`] = fill(t.errDayInMonth, { month: MONTHS[lang][m - 1] });
+      ok = false;
     }
 
-    if (!month) {
-      setMonthError("Month is required");
-      hasError = true;
-    } else if (m < 1 || m > 12) {
-      setMonthError("Must be a valid month");
-      hasError = true;
-    }
-
-    if (!year) {
-      setYearError("Year is required");
-      hasError = true;
-    } else if (year.length < 4) {
-      setYearError("Year must be 4 digits");
-      hasError = true;
-    }
-
-    if (d && m && !hasError) {
-      const monthDays = [
-        31, isLeapYear(y) ? 29 : 28, 31, 30, 31, 30,
-        31, 31, 30, 31, 30, 31,
-      ];
-      if (d > monthDays[m - 1]) {
-        setDayError(`Invalid day for ${getMonthName(m)}`);
-        hasError = true;
+    if (ok) {
+      const date = new Date(y, m - 1, d);
+      if (!allowFuture && startOfDay(date) > startOfDay(new Date())) {
+        errs[`${prefix}y`] = t.errFuture;
+        ok = false;
+      }
+      if (ok) {
+        setErrors((prev) => ({ ...prev, ...Object.fromEntries(
+          Object.keys(errs).length ? Object.entries(errs) : [[`${prefix}d`, ""], [`${prefix}m`, ""], [`${prefix}y`, ""]]
+        ) }));
+        return date;
       }
     }
+    setErrors((prev) => ({ ...prev, ...errs }));
+    return null;
+  };
 
-    const currentDate = new Date();
-    const birthDate = new Date(y, m - 1, d);
+  const calculate = () => {
+    setErrors({});
+    setCopied(false);
 
-    if (birthDate > currentDate && !hasError) {
-      setYearError("Date cannot be in the future");
-      hasError = true;
-    }
-
-    if (hasError) {
-      setShakeKey((k) => k + 1);
-      return;
-    }
-
-    let years: number, months: number, days: number;
-    const currentDay = currentDate.getDate();
-    const currentMonth = currentDate.getMonth() + 1;
-    const currentYear = currentDate.getFullYear();
-
-    years = currentYear - y;
-
-    if (currentMonth >= m) {
-      months = currentMonth - m;
-    } else {
-      years--;
-      months = 12 + currentMonth - m;
-    }
-
-    if (currentDay >= d) {
-      days = currentDay - d;
-    } else {
-      months--;
-      const monthDays = [
-        31, isLeapYear(currentYear) ? 29 : 28, 31, 30, 31, 30,
-        31, 31, 30, 31, 30, 31,
-      ];
-      days = monthDays[currentMonth > 1 ? currentMonth - 2 : 11] + currentDay - d;
-      if (months < 0) {
-        months = 11;
-        years--;
+    if (mode === "age") {
+      const b = validateTrio(birth, "b", false);
+      if (!b) {
+        setShakeKey((k) => k + 1);
+        return;
       }
-    }
+      const now = new Date();
+      const age = ageAt(b, now);
+      const nb = nextBirthday(b, now);
+      const leapDay = isLeapDay(b);
+      setResult({
+        years: age.years,
+        months: age.months,
+        days: age.days,
+        totalDays: age.totalDays,
+        totalHours: age.totalHours,
+        isBirthday: nb.isToday,
+        leapDay,
+        birthWeekday: WEEKDAYS[lang][b.getDay()],
+        nextBdDays: nb.daysUntil,
+        nextBdDate: nb.date,
+      });
+      setDiffLabel(null);
+      setRunId((k) => k + 1);
+    } else {
+      const f = validateTrio(from, "f", true);
+      const toDate = validateTrio(to, "t", true);
+      if (!f || !toDate) {
+        setShakeKey((k) => k + 1);
+        return;
+      }
+      if (startOfDay(toDate) < startOfDay(f)) {
+        setErrors({ ft: t.errFromTo });
+        setShakeKey((k) => k + 1);
+        return;
+      }
 
-    setResult({ years, months, days });
-    setRunId((k) => k + 1);
+      const diff = diffYMD(f, toDate);
+      setResult({
+        years: diff.years,
+        months: diff.months,
+        days: diff.days,
+        totalDays: diff.totalDays,
+        totalHours: diff.totalHours,
+        isBirthday: false,
+        leapDay: false,
+        birthWeekday: null,
+        nextBdDays: null,
+        nextBdDate: null,
+      });
+      setDiffLabel({ from: f, to: toDate });
+      setRunId((k) => k + 1);
+    }
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") calculateAge();
+    if (e.key === "Enter") calculate();
   };
+
+  const shareResult = async () => {
+    if (!result) return;
+    const locale = lang === "az" ? "az-Latn-AZ" : "en-GB";
+    let text: string;
+    if (mode === "diff" && diffLabel) {
+      const fmt = (d: Date) => d.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
+      text = `${t.diffResult} ${fmt(diffLabel.from)} → ${fmt(diffLabel.to)}: ${result.years} ${t.unitYears}, ${result.months} ${t.unitMonths}, ${result.days} ${t.unitDays} (${result.totalDays} ${t.unitDays}).`;
+    } else {
+      text = `${t.youAre} ${result.years} ${t.unitYears}, ${result.months} ${t.unitMonths}, ${result.days} ${t.unitDays} ${t.oldCaption}.`;
+      if (result.nextBdDays !== null && result.nextBdDays > 0) {
+        text += ` ${fill(t.nextBirthdayIn, { days: result.nextBdDays })}.`;
+      }
+    }
+    text += " — AgeCalculator";
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "AgeCalculator", text });
+        return;
+      } catch {
+        /* user cancelled or share failed — fall through to clipboard */
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+
+  const fmtDate = (d: Date) =>
+    d.toLocaleDateString(lang === "az" ? "az-Latn-AZ" : "en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
 
   const years = result?.years ?? 0;
   const months = result?.months ?? 0;
@@ -216,18 +292,96 @@ export default function App() {
   const shownDays = useCountUp(days, 240, runId);
 
   const now = new Date();
-  const isBirthday =
-    result !== null &&
-    parseInt(month) === now.getMonth() + 1 &&
-    parseInt(day) === now.getDate();
-
   const asOf = result
-    ? `as of ${MONTHS[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`
+    ? `${t.asOf} ${MONTHS[lang][now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`
     : "";
+
+  const renderField = (
+    id: string,
+    label: string,
+    placeholder: string,
+    value: string,
+    onChange: (v: string) => void,
+    maxLength: number,
+    autoComplete: string
+  ) => (
+    <div className="inputcontainer" key={id}>
+      <label className="title" htmlFor={id}>{label}</label>
+      <input
+        type="text"
+        id={id}
+        name={id}
+        placeholder={placeholder}
+        required
+        inputMode="numeric"
+        autoComplete={autoComplete}
+        aria-invalid={errors[id] ? true : undefined}
+        aria-describedby={errors[id] ? `${id}-error` : undefined}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        maxLength={maxLength}
+      />
+      <span className="error" id={`${id}-error`} aria-live="polite">{errors[id] ?? ""}</span>
+    </div>
+  );
+
+  const renderTrio = (
+    prefix: "b" | "f" | "t",
+    fields: Fields,
+    setFields: (f: Fields) => void,
+    groupLabel?: string
+  ) => (
+    <fieldset className="date-trio">
+      {groupLabel ? <legend className="trio-legend">{groupLabel}</legend> : null}
+      <div className="middle">
+        {renderField(
+          `${prefix}d`,
+          t.day,
+          "DD",
+          fields.d,
+          (v) => setFields({ ...fields, d: clampField("d", v, 31) }),
+          2,
+          mode === "age" ? "bday-day" : "off"
+        )}
+        {renderField(
+          `${prefix}m`,
+          t.month,
+          "MM",
+          fields.m,
+          (v) => setFields({ ...fields, m: clampField("m", v, 12) }),
+          2,
+          mode === "age" ? "bday-month" : "off"
+        )}
+        {renderField(
+          `${prefix}y`,
+          t.year,
+          "YYYY",
+          fields.y,
+          (v) => setFields({ ...fields, y: clampField("y", v, 9999) }),
+          4,
+          mode === "age" ? "bday-year" : "off"
+        )}
+      </div>
+    </fieldset>
+  );
 
   return (
     <>
-      <div className="theme-toggle">
+      <div className="controls">
+        <div className="lang-toggle" role="group" aria-label="Language / Dil">
+          {(["en", "az"] as Lang[]).map((l) => (
+            <button
+              key={l}
+              type="button"
+              className={`lang-btn${lang === l ? " is-active" : ""}`}
+              aria-pressed={lang === l}
+              onClick={() => switchLang(l)}
+            >
+              {l.toUpperCase()}
+            </button>
+          ))}
+        </div>
         <button
           id="themeToggle"
           onClick={toggleTheme}
@@ -253,77 +407,37 @@ export default function App() {
       <div className="container">
         <main className="formContainer">
           <div className="up">
-            <h1>Age Calculator</h1>
+            <h1>{t.title}</h1>
+            <p className="subtitle">{t.subtitle}</p>
           </div>
-          <div className="middle">
-            <div className="inputcontainer" key={`d-${shakeKey}`} data-error={dayError ? "true" : undefined}>
-              <label className="title" htmlFor="date">Day</label>
-              <input
-                type="text"
-                name="date"
-                id="date"
-                placeholder="DD"
-                required
-                minLength={1}
-                maxLength={2}
-                inputMode="numeric"
-                autoComplete="bday-day"
-                aria-invalid={dayError ? true : undefined}
-                aria-describedby={dayError ? "date-error" : undefined}
-                value={day}
-                onChange={(e) => handleDay(e.target.value)}
-                onKeyDown={onKeyDown}
-              />
-              <span className="error" id="date-error" aria-live="polite">{dayError}</span>
-            </div>
 
-            <div className="inputcontainer" key={`m-${shakeKey}`} data-error={monthError ? "true" : undefined}>
-              <label className="title" htmlFor="month">Month</label>
-              <input
-                type="text"
-                name="month"
-                id="month"
-                placeholder="MM"
-                required
-                minLength={1}
-                maxLength={2}
-                inputMode="numeric"
-                autoComplete="bday-month"
-                aria-invalid={monthError ? true : undefined}
-                aria-describedby={monthError ? "month-error" : undefined}
-                value={month}
-                onChange={(e) => handleMonth(e.target.value)}
-                onKeyDown={onKeyDown}
-              />
-              <span className="error" id="month-error" aria-live="polite">{monthError}</span>
-            </div>
+          <div className="mode-switch" role="tablist" aria-label={t.modeAge}>
+            {(["age", "diff"] as Mode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={mode === m}
+                className={`mode-btn${mode === m ? " is-active" : ""}`}
+                onClick={() => { setMode(m); setErrors({}); setResult(null); setDiffLabel(null); setCopied(false); }}
+              >
+                {m === "age" ? t.modeAge : t.modeDiff}
+              </button>
+            ))}
+          </div>
 
-            <div className="inputcontainer" key={`y-${shakeKey}`} data-error={yearError ? "true" : undefined}>
-              <label className="title" htmlFor="year">Year</label>
-              <input
-                type="text"
-                name="year"
-                id="year"
-                placeholder="YYYY"
-                required
-                minLength={4}
-                maxLength={4}
-                inputMode="numeric"
-                autoComplete="bday-year"
-                aria-invalid={yearError ? true : undefined}
-                aria-describedby={yearError ? "year-error" : undefined}
-                value={year}
-                onChange={(e) => handleYear(e.target.value)}
-                onKeyDown={onKeyDown}
-              />
-              <span className="error" id="year-error" aria-live="polite">{yearError}</span>
-            </div>
+          <div key={`shake-${shakeKey}`} data-error={Object.values(errors).some(Boolean) ? "true" : undefined}>
+            {mode === "age"
+              ? renderTrio("b", birth, setBirth)
+              : renderTrio("f", from, setFrom, t.from)}
+
+            {mode === "diff" && renderTrio("t", to, setTo, t.to)}
           </div>
 
           <div className="bottom">
             <div className="submit-button">
-              <button type="button" id="calculateBtn" onClick={calculateAge}>
-                Calculate Age
+              <button type="button" id="calculateBtn" onClick={calculate}>
+                {t.calculate}
               </button>
             </div>
           </div>
@@ -332,23 +446,53 @@ export default function App() {
             <div id="ageResult">
               {result && (
                 <div key={runId}>
-                  <p className="result-heading">You are</p>
+                  <p className="result-heading">{mode === "diff" ? t.diffResult : t.youAre}</p>
                   <div className="result-grid">
                     <div className="result-cell">
                       <span className="result-number">{shownYears}</span>
-                      <span className="result-unit">years</span>
+                      <span className="result-unit">{t.unitYears}</span>
                     </div>
                     <div className="result-cell">
                       <span className="result-number">{shownMonths}</span>
-                      <span className="result-unit">months</span>
+                      <span className="result-unit">{t.unitMonths}</span>
                     </div>
                     <div className="result-cell">
                       <span className="result-number">{shownDays}</span>
-                      <span className="result-unit">days</span>
+                      <span className="result-unit">{t.unitDays}</span>
                     </div>
                   </div>
-                  <p className="result-caption">old{isBirthday ? " — and it's your birthday today 🎂" : ""}</p>
+                  {mode === "age" && (
+                    <p className="result-caption">
+                      {result.isBirthday ? t.birthdayCaption : t.oldCaption}
+                    </p>
+                  )}
+
+                  <div className="result-extras">
+                    {mode === "age" && result.birthWeekday && (
+                      <p className="extra-line">{fill(t.bornOn, { day: result.birthWeekday })}</p>
+                    )}
+                    <p className="extra-line">
+                      {fill(t.totalLine, { days: result.totalDays.toLocaleString(lang === "az" ? "az-Latn-AZ" : "en-US"), hours: result.totalHours.toLocaleString(lang === "az" ? "az-Latn-AZ" : "en-US") })}
+                    </p>
+                    {mode === "age" && result.nextBdDays !== null && (
+                      result.isBirthday ? (
+                        <p className="extra-line extra-strong">{t.nextBirthdayToday}</p>
+                      ) : (
+                        <p className="extra-line extra-strong">
+                          {fill(t.nextBirthdayIn, { days: result.nextBdDays })}
+                          {" · "}
+                          {fill(t.nextBirthdayOn, { date: result.nextBdDate ? fmtDate(result.nextBdDate) : "" })}
+                        </p>
+                      )
+                    )}
+                    {result.leapDay && <p className="extra-line extra-muted">{t.leapNote}</p>}
+                  </div>
+
                   <p className="result-asof">{asOf}</p>
+
+                  <button type="button" className="share-btn" onClick={shareResult}>
+                    {copied ? t.copied : t.share}
+                  </button>
                 </div>
               )}
             </div>

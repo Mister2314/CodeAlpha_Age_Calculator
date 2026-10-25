@@ -3,13 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Age Calculator</title>
+    <title>AgeCalculator — exact age, birthdays & date differences</title>
+    <meta
+      name="description"
+      content="Calculate your exact age in years, months and days, count down to your next birthday, measure the difference between two dates. Free, private, works offline."
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f6f8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#14141f" media="(prefers-color-scheme: dark)" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap"
       rel="stylesheet"
     />
+    <script>
+      // Apply the persisted (or system) theme before first paint — no flash.
+      (function () {
+        try {
+          var saved = localStorage.getItem("theme");
+          var dark =
+            saved === "dark" ||
+            (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.className = dark ? "dark-mode" : "light-mode";
+        } catch (e) {
+          /* localStorage unavailable — default styles apply */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
