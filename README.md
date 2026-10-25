@@ -1,12 +1,12 @@
-# Age Calculator
+# AgeCalculator
 
-Calculates an exact age in years, months and days from a day / month / year input.
+Calculates an exact age in years, months and days — plus a countdown to your next birthday and a two-date difference mode. English / Azərbaycanca.
 
-**Live demo:** https://codealpha-age-calculator-rho.vercel.app
+**Live demo:** https://age-calculator-rho.vercel.app <!-- re-check after repo/project rename -->
 
 <div align="center">
 
-<img src="docs/demo.gif" alt="Age Calculator — animated demo" width="700">
+<img src="docs/demo.gif" alt="AgeCalculator — animated demo" width="700">
 
 | Desktop | Mobile |
 |---|---|
@@ -23,42 +23,47 @@ Calculates an exact age in years, months and days from a day / month / year inpu
 
 </div>
 
-## What it does
+## Features
 
-Three separate date fields instead of one native date picker, so the input can be masked as it is typed: non-digits are stripped on the fly and day (1–31) and month (1–12) are clamped, which makes an impossible date hard to submit. The result is broken down into years, months and days, plus totals in months, weeks and days. Built during the CodeAlpha front-end internship.
+- **Exact age** — years, months and days, not just a year count, plus totals in days and hours
+- **Next-birthday countdown** — days remaining, the weekday it falls on, and a birthday-today moment
+- **Leap-day birthdays** — born Feb 29? The countdown follows the Mar 1 convention in non-leap years and says so
+- **Date difference mode** — measure any two dates in years / months / days and total days
+- **Shareable result** — native share sheet where supported, clipboard fallback everywhere
+- **English / Azerbaijani** — one-tap language switch, persisted, browser language detected on first visit
+- **Per-field input masking** — non-digits stripped as you type, day and month range-clamped, impossible dates caught against real month lengths
+- **Dark / light theme** — follows the system on first visit, persisted choice, no first-paint flash
+- **Accessible** — `aria-live` result and error announcements, `aria-invalid` field marking, keyboard flow, focus-visible rings, reduced-motion honoured throughout
 
 ## Tech stack
 
-React 19 · TypeScript · Vite
-
-## Features
-
-- Exact age in years, months and days, not just a year count
-- Per-field input masking — non-digits stripped as you type
-- Range clamping on day and month inputs
-- Dark / light theme toggle with inline SVG icons, persisted to `localStorage`
-- Responsive layout set in Noto Sans
-
-## The revamp
-
-The 2026 pass keeps the tool's identity and spends its motion budget in one place — the result:
-
-- **Kinetic result reveal** — the three numerals count up in a staggered sequence with `tabular-nums`, so digits never jitter while they animate
-- **Cause-linked error choreography** — the offending field shakes and its message slides in under it; every message is announced through `aria-live`
-- **Theme toggle micro-interaction** — icon crossfade, with a View Transitions API cross-fade between palettes where the browser supports it (progressive enhancement)
-- **Birthday moment** — calculate your age on your birthday and the result says so
-- **Mobile-first inputs** — `inputMode="numeric"` brings up the digit keypad, `autocomplete="bday-*"` fills from contacts, 16px inputs prevent iOS zoom
-- **Reduced motion designed in** — with `prefers-reduced-motion`, counts land instantly and all transitions collapse; the static page is the complete page
+React 19 · TypeScript · Vite — no runtime dependencies beyond React, no analytics, no cookies. Dates are computed locally in the browser.
 
 ## Run locally
 
 ```bash
-git clone https://github.com/Mister2314/CodeAlpha_Age_Calculator.git
-cd CodeAlpha_Age_Calculator
+git clone https://github.com/Mister2314/AgeCalculator.git
+cd AgeCalculator
 npm install
 npm run dev
 ```
 
+## Project structure
+
+```
+src/
+  age.ts     — calendar math: age, date difference, next birthday, leap-year rules
+  i18n.ts    — EN/AZ string dictionaries
+  App.tsx    — UI, validation, share
+  styles.css — design tokens, themes, motion
+```
+
+## Design notes
+
+The motion budget is spent in one place — the result. The three numerals count up in a staggered sequence with `tabular-nums` so digits never jitter; everything else is state feedback (field shake on error, icon crossfade on theme switch). With `prefers-reduced-motion`, counts land instantly and the static page is the complete page.
+
+Feb 29 birthdays roll forward to Mar 1 in non-leap years (`new Date(year, 1, 29)` does exactly this), which matches the most common celebration convention — and the app tells the user that's what it did.
+
 ## What I learned
 
-Masking each field separately forces the validation logic to live in `input` events rather than a single submit check — errors surface while typing instead of after. The revamp added the flip side: a hand-rolled `requestAnimationFrame` counter is ~30 lines, and not adding an animation library was the design decision that mattered.
+Masking each field separately forces the validation logic to live in `input` events rather than a single submit check — errors surface while typing instead of after. The second lesson: a hand-rolled `requestAnimationFrame` counter is ~30 lines, and not adding an animation library was the design decision that mattered.
