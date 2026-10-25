@@ -75,7 +75,7 @@ interface Computed {
   totalHours: number;
   isBirthday: boolean;
   leapDay: boolean;
-  birthWeekday: string | null;
+  birthWeekdayIndex: number | null;
   nextBdDays: number | null;
   nextBdDate: Date | null;
 }
@@ -204,7 +204,7 @@ export default function App() {
         totalHours: age.totalHours,
         isBirthday: nb.isToday,
         leapDay,
-        birthWeekday: WEEKDAYS[lang][b.getDay()],
+        birthWeekdayIndex: b.getDay(),
         nextBdDays: nb.daysUntil,
         nextBdDate: nb.date,
       });
@@ -218,7 +218,7 @@ export default function App() {
         return;
       }
       if (startOfDay(toDate) < startOfDay(f)) {
-        setErrors({ ft: t.errFromTo });
+        setErrors({ td: t.errFromTo });
         setShakeKey((k) => k + 1);
         return;
       }
@@ -232,7 +232,7 @@ export default function App() {
         totalHours: diff.totalHours,
         isBirthday: false,
         leapDay: false,
-        birthWeekday: null,
+        birthWeekdayIndex: null,
         nextBdDays: null,
         nextBdDate: null,
       });
@@ -247,10 +247,9 @@ export default function App() {
 
   const shareResult = async () => {
     if (!result) return;
-    const locale = lang === "az" ? "az-Latn-AZ" : "en-GB";
     let text: string;
     if (mode === "diff" && diffLabel) {
-      const fmt = (d: Date) => d.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
+      const fmt = (d: Date) => fmtDate(d);
       text = `${t.diffResult} ${fmt(diffLabel.from)} → ${fmt(diffLabel.to)}: ${result.years} ${t.unitYears}, ${result.months} ${t.unitMonths}, ${result.days} ${t.unitDays} (${result.totalDays} ${t.unitDays}).`;
     } else {
       text = `${t.youAre} ${result.years} ${t.unitYears}, ${result.months} ${t.unitMonths}, ${result.days} ${t.unitDays} ${t.oldCaption}.`;
@@ -276,12 +275,10 @@ export default function App() {
     }
   };
 
-  const fmtDate = (d: Date) =>
-    d.toLocaleDateString(lang === "az" ? "az-Latn-AZ" : "en-GB", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
+  // Locale-independent formatting: AZ locale data is missing in some
+  // browsers, so dates and numbers are built from our own dictionaries.
+  const fmtDate = (d: Date) => `${d.getDate()} ${MONTHS[lang][d.getMonth()]} ${d.getFullYear()}`;
+  const fmtNum = (n: number) => n.toLocaleString("en-US");
 
   const years = result?.years ?? 0;
   const months = result?.months ?? 0;
@@ -292,9 +289,7 @@ export default function App() {
   const shownDays = useCountUp(days, 240, runId);
 
   const now = new Date();
-  const asOf = result
-    ? `${t.asOf} ${MONTHS[lang][now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`
-    : "";
+  const asOf = result ? `${t.asOf} ${fmtDate(now)}` : "";
 
   const renderField = (
     id: string,
@@ -468,11 +463,11 @@ export default function App() {
                   )}
 
                   <div className="result-extras">
-                    {mode === "age" && result.birthWeekday && (
-                      <p className="extra-line">{fill(t.bornOn, { day: result.birthWeekday })}</p>
+                    {mode === "age" && result.birthWeekdayIndex !== null && (
+                      <p className="extra-line">{fill(t.bornOn, { day: WEEKDAYS[lang][result.birthWeekdayIndex] })}</p>
                     )}
                     <p className="extra-line">
-                      {fill(t.totalLine, { days: result.totalDays.toLocaleString(lang === "az" ? "az-Latn-AZ" : "en-US"), hours: result.totalHours.toLocaleString(lang === "az" ? "az-Latn-AZ" : "en-US") })}
+                      {fill(t.totalLine, { days: fmtNum(result.totalDays), hours: fmtNum(result.totalHours) })}
                     </p>
                     {mode === "age" && result.nextBdDays !== null && (
                       result.isBirthday ? (
@@ -488,7 +483,7 @@ export default function App() {
                     {result.leapDay && <p className="extra-line extra-muted">{t.leapNote}</p>}
                   </div>
 
-                  <p className="result-asof">{asOf}</p>
+                  {mode === "age" && <p className="result-asof">{asOf}</p>}
 
                   <button type="button" className="share-btn" onClick={shareResult}>
                     {copied ? t.copied : t.share}
